@@ -75,7 +75,8 @@ export const SHORT: GasCheck = {
     estimate: ESTIMATE,
     balance: 0n,
     operates: { address: ACCOUNT, name: 'Account 1', deployed: true },
-    transferFee: ESTIMATE
+    transferFee: ESTIMATE,
+    accountPays: true
   })
 }
 

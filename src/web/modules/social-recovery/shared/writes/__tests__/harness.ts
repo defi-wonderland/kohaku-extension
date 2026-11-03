@@ -244,6 +244,8 @@ export const runGasCheck = (args: {
   transferTransaction?: GasEstimateCall
   /** The bar a balance must reach to pass; the check's default where left out. */
   passBar?: GasPassBar
+  /** Whether the account the key operates may pay the fee; the check's default where left out. */
+  accountPays?: boolean
 }): Promise<GasCheck> => {
   const key = args.key ?? KEY
   const prepared = args.prepared ?? preparedFor(args.write)
@@ -258,6 +260,7 @@ export const runGasCheck = (args: {
     ...(ownerWrite ? { transaction } : {}),
     ...(args.transferTransaction ? { transferTransaction: args.transferTransaction } : {}),
     ...(args.passBar ? { passBar: args.passBar } : {}),
+    ...(args.accountPays !== undefined ? { accountPays: args.accountPays } : {}),
     ...(args.fastTrack ? { fastTrack: true } : { operates: args.operates ?? ACCOUNT_REF })
   })
 }
@@ -698,6 +701,13 @@ export type GasWorld = {
   gas: bigint
   factory?: Address
   reverts?: boolean
+}
+
+/** A recovery call, named, and whether it runs on the fast track. */
+export type RecoveryCallCase = {
+  name: string
+  write: 'submission' | 'execution'
+  fastTrack: boolean
 }
 
 /** A call the estimate was asked for. */

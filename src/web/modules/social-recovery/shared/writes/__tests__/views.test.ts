@@ -28,12 +28,15 @@ import {
   KEY,
   kitError,
   landWithReceipt,
+  mockReads,
   NETWORK,
   NOT_SENT_KEYS,
   renderDepositStep,
   renderGasAmount,
   renderGasBalance,
   renderWriteState,
+  runGasCheck,
+  stepOf,
   STEP_CASES,
   submittingFor,
   userRejected,
@@ -153,6 +156,28 @@ describe('DepositStepView: what renderDepositStep answers', () => {
       expect(r.waiting).toEqual([])
       expect(r.blocker.title).toBe(r.title)
       expect(r.blocker.line).toBe(r.lead[0])
+    })
+  )
+  ;(['save', 'edit', 'ownerWrite', 'cancel'] as const).forEach((write) =>
+    it(`${write}: no line that the account can pay itself where the check read the key alone`, async () => {
+      const step = stepOf(
+        await runGasCheck({
+          write,
+          accountPays: false,
+          reads: mockReads({
+            balance: 0n,
+            accountBalance: 1_000_000_000_000_000_000n,
+            gas: 240_000n
+          })
+        })
+      )
+      const r = renderDepositStep(step)
+      expect(r.title).toBe(t(GAS_KEYS.notEnoughGasAccountKey))
+      expect(r.notes).toEqual([
+        t(GAS_KEYS.feeMayChange),
+        t(GAS_KEYS.transferIsAnOperation),
+        t(GAS_KEYS.networkOwner, { network: NETWORK.name })
+      ])
     })
   )
 

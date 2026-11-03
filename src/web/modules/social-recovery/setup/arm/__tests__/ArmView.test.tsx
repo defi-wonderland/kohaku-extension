@@ -145,7 +145,8 @@ const STEP: DepositStep = {
       }
     },
     { kind: 'outside', to: KEY, amount: 900_000_000_000_000n }
-  ]
+  ],
+  accountPays: true
 }
 
 let container: HTMLDivElement

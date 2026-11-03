@@ -5,6 +5,7 @@
  * after a landed receipt decides, down to the wipe of the six setup records on
  * the extension's records over an in-memory storage.
  */
+import i18n from '@common/config/localization'
 import type { Account } from '@ambire-common/interfaces/account'
 import type { SetupDraft } from '@kohaku-eth/social-recovery'
 import {
@@ -23,7 +24,14 @@ import {
   setRecoveryPassword,
   SETUP_RECORD_NAMES
 } from '@web/modules/social-recovery/shared/records'
-import { canRetry, mayStillLand } from '@web/modules/social-recovery/shared/writes'
+import {
+  canRetry,
+  GAS_KEYS,
+  mayStillLand,
+  renderDepositStep,
+  renderGasAmount
+} from '@web/modules/social-recovery/shared/writes'
+import type { DepositStep } from '@web/modules/social-recovery/shared/writes'
 
 import {
   armScreenOf,
@@ -1439,8 +1447,12 @@ describe("the sign screen's estimation before a save never sent", () => {
         return
       }
       expect(write.step.key.toLowerCase()).toBe(KEY.addr.toLowerCase())
-      // Each check reads the key's balance and the account's.
-      expect(balanceReadsOf(wired.reads)).toHaveLength(4)
+      // The first check reads the key's balance and the account's; the check again the key's alone.
+      expect(balanceReadsOf(wired.reads)).toEqual([
+        KEY.addr.toLowerCase(),
+        wired.account.toLowerCase(),
+        KEY.addr.toLowerCase()
+      ])
       // The first run's read before its prepare and after its claim, then the new run's own.
       expect(wired.setupState).toHaveBeenCalledTimes(3)
       expect(wired.setupState.mock.invocationCallOrder[2]).toBeGreaterThan(
@@ -1471,8 +1483,7 @@ describe("the sign screen's estimation before a save never sent", () => {
     expect(balanceReadsOf(wired.reads)).toEqual([
       KEY.addr.toLowerCase(),
       wired.account.toLowerCase(),
-      KEY.addr.toLowerCase(),
-      wired.account.toLowerCase()
+      KEY.addr.toLowerCase()
     ])
     // No new run started: only the reads before the prepare and after the claim.
     expect(wired.setupState).toHaveBeenCalledTimes(2)
@@ -1492,16 +1503,21 @@ describe("the sign screen's estimation before a save never sent", () => {
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
-  it("keeps the not-sent state where the account's balance read fails on the check again", async () => {
+  it("keeps the not-sent state where the account paid the first check and the key's balance read fails on the check again", async () => {
     const wired = wireSave(
       account,
       script({ send: 'refused', estimation: feeReading({ error: true }) })
     )
-    balancesOf(wired, [0n], [RICH, new Error('node down')])
+    balancesOf(wired, [0n, new Error('node down')], [RICH])
     const store = await runSave(wired.steps)
 
     expect(store.state().write.status).toBe('failedNotSent')
     expect(store.state().write.run).toBe(1)
+    expect(balanceReadsOf(wired.reads)).toEqual([
+      KEY.addr.toLowerCase(),
+      wired.account.toLowerCase(),
+      KEY.addr.toLowerCase()
+    ])
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
@@ -1524,19 +1540,56 @@ describe("the sign screen's estimation before a save never sent", () => {
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
-  it('reads both balances again and keeps the not-sent state where the account holds the amount asked and the key nothing', async () => {
+  /** Whether the rendered step tells that the account can pay the fee itself. */
+  const showsAccountNote = (step: DepositStep) =>
+    renderDepositStep(step).notes.includes(
+      i18n.t(GAS_KEYS.accountCanPay, {
+        amount: renderGasAmount(step.estimate.asked, step.network.symbol)
+      })
+    )
+
+  it("reads the key alone on the check again and shows the key's deposit step in a new run, with no note that the account can pay, where the account holds the amount asked and the key nothing", async () => {
     const wired = wireSave(
       account,
       script({ send: 'refused', estimation: feeReading({ error: true }) })
     )
     balancesOf(wired, [0n], [RICH])
     const store = await runSave(wired.steps)
+    const { write } = store.state()
 
-    expect(store.state().write.status).toBe('failedNotSent')
-    expect(store.state().write.run).toBe(1)
-    expect(balanceReadsOf(wired.reads)).toHaveLength(4)
-    expect(wired.setupState).toHaveBeenCalledTimes(2)
+    expect(write.status).toBe('needsDeposit')
+    expect(write.run).toBe(2)
+    if (write.status !== 'needsDeposit') {
+      return
+    }
+    expect(write.step.key.toLowerCase()).toBe(KEY.addr.toLowerCase())
+    expect(write.step.balance).toBe(0n)
+    expect(write.step.shortfall).toBe(write.step.estimate.asked)
+    expect(write.step.accountPays).toBe(false)
+    expect(showsAccountNote(write.step)).toBe(false)
+    expect(balanceReadsOf(wired.reads)).toEqual([
+      KEY.addr.toLowerCase(),
+      wired.account.toLowerCase(),
+      KEY.addr.toLowerCase()
+    ])
+    expect(wired.setupState).toHaveBeenCalledTimes(3)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends the save on continue once the key holds the amount asked, after the account paid the first check and the sign screen read it short', async () => {
+    const wired = wireSave(
+      account,
+      script({ send: 'refused', estimation: feeReading({ error: true }) })
+    )
+    balancesOf(wired, [0n, 0n, RICH], [RICH])
+    const store = await runSave(wired.steps)
+    expect(store.state().write.status).toBe('needsDeposit')
+
+    wired.port.sendAccountBatch.mockResolvedValue(TX_HASH)
+    await recheckGas(store, wired.steps, { timeoutMs: SHORT_TIMEOUT_MS })
+
+    expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(2)
+    expect(isSaved(store.state())).toBe(true)
   })
 
   it("shows the key's deposit step in a new run where the account passed the first check but holds less than the amount asked", async () => {
@@ -1556,6 +1609,7 @@ describe("the sign screen's estimation before a save never sent", () => {
     expect(write.step.key.toLowerCase()).toBe(KEY.addr.toLowerCase())
     expect(write.step.balance).toBe(0n)
     expect(write.step.shortfall).toBe(write.step.estimate.asked)
+    expect(showsAccountNote(write.step)).toBe(false)
     expect(wired.port.sendAccountBatch).toHaveBeenCalledTimes(1)
   })
 
@@ -1597,14 +1651,16 @@ describe("the sign screen's estimation before a save never sent", () => {
       script({ send: 'refused', estimation: feeReading({ error: true }) })
     )
     const store = await runSave(wired.steps)
-    expect(balanceReadsOf(wired.reads)).toHaveLength(4)
+    // The first check reads the key's balance and the account's; the check again the key's alone.
+    expect(balanceReadsOf(wired.reads)).toHaveLength(3)
     wired.port.sendAccountBatch.mockRejectedValue(accountBatchRefusal('refused', wired.account))
 
     await restart(store, wired)
 
     expect(store.state().write.status).toBe('failedNotSent')
     expect(store.state().write.run).toBe(2)
-    expect(balanceReadsOf(wired.reads)).toHaveLength(6)
+    // The next run's own check alone, with no check again.
+    expect(balanceReadsOf(wired.reads)).toHaveLength(5)
   })
 })
 

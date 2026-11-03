@@ -30,7 +30,10 @@ import {
   WRITE_KINDS,
   writeReducer
 } from '@web/modules/social-recovery/shared/writes/__tests__/harness'
-import type { DataCall } from '@web/modules/social-recovery/shared/writes/__tests__/harness'
+import type {
+  DataCall,
+  RecoveryCallCase
+} from '@web/modules/social-recovery/shared/writes/__tests__/harness'
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 
@@ -247,6 +250,8 @@ describe("the gas check of a write the key sends on the account's behalf", () =>
   const ASKED = 900_000_000_000_000n
   /** A balance above the bar to pass and below the amount asked. */
   const BETWEEN = 700_000_000_000_000n
+  /** A balance far above any fee. */
+  const RICH = 1_000_000_000_000_000_000n
 
   const readsOf = (key: bigint, account: bigint) =>
     mockReads({ balance: key, accountBalance: account, gas: GAS, price: PRICE })
@@ -282,11 +287,38 @@ describe("the gas check of a write the key sends on the account's behalf", () =>
         expect(step.balance).toBe(held)
         expect(step.shortfall).toBe(ASKED - held)
         expect(step.routes.map((route) => route.kind)).toEqual(['transfer', 'outside'])
+        expect(step.accountPays).toBe(true)
         expect(renderDepositStep(step).notes).toContain(
           i18n.t(GAS_KEYS.accountCanPay, {
             amount: renderGasAmount(ASKED, NETWORK.nativeAssetSymbol)
           })
         )
+      })
+
+      it("reads the key's balance alone where the account is left out of paying, and shows the key's deposit step with no note that the account can pay, however much the account holds", async () => {
+        const reads = readsOf(0n, RICH)
+        const check = await runGasCheck({ write, reads, accountPays: false })
+        const step = stepOf(check)
+
+        expect(balanceReadsOf(reads)).toEqual([KEY.addr.toLowerCase()])
+        expect(stateAfterGasCheck(check).status).toBe('needsDeposit')
+        expect(same(step.key, KEY.addr)).toBe(true)
+        expect(step.balance).toBe(0n)
+        expect(step.shortfall).toBe(ASKED)
+        expect(step.accountPays).toBe(false)
+        expect(renderDepositStep(step).notes).not.toContain(
+          i18n.t(GAS_KEYS.accountCanPay, {
+            amount: renderGasAmount(ASKED, NETWORK.nativeAssetSymbol)
+          })
+        )
+      })
+
+      it('passes on the key alone where the account is left out of paying and the key holds the bar to pass', async () => {
+        const reads = readsOf(REQUIRED, 0n)
+        const check = await runGasCheck({ write, reads, accountPays: false })
+
+        expect(check).toMatchObject({ kind: 'enough', balance: REQUIRED })
+        expect(balanceReadsOf(reads)).toEqual([KEY.addr.toLowerCase()])
       })
 
       it("reads the key's balance and the balance of the account the key operates", async () => {
@@ -336,6 +368,22 @@ describe("the gas check of a write the key sends on the account's behalf", () =>
       expect(step.shortfall).toBe(ASKED)
     })
 
+    it("reads the key alone where the account is left out of paying, and shows the key's deposit step though the account holds the amount asked", async () => {
+      const reads = readsOf(0n, ASKED)
+      const check = await runGasCheck({
+        write: 'save',
+        reads,
+        passBar: 'asked',
+        accountPays: false
+      })
+      const step = stepOf(check)
+
+      expect(balanceReadsOf(reads)).toEqual([KEY.addr.toLowerCase()])
+      expect(step.balance).toBe(0n)
+      expect(step.shortfall).toBe(ASKED)
+      expect(step.accountPays).toBe(false)
+    })
+
     it('passes the same account where the check runs at its default bar', async () => {
       expect((await runGasCheck({ write: 'save', reads: readsOf(0n, BETWEEN) })).kind).toBe(
         'enough'
@@ -344,11 +392,7 @@ describe("the gas check of a write the key sends on the account's behalf", () =>
   })
 
   describe("a recovery call is paid by the recoverer's own key", () => {
-    const RECOVERY_CALLS: {
-      name: string
-      write: 'submission' | 'execution'
-      fastTrack: boolean
-    }[] = [
+    const RECOVERY_CALLS: RecoveryCallCase[] = [
       { name: 'a submission', write: 'submission', fastTrack: false },
       { name: 'an execution', write: 'execution', fastTrack: false },
       { name: 'a submission on the fast track', write: 'submission', fastTrack: true },
@@ -362,6 +406,7 @@ describe("the gas check of a write the key sends on the account's behalf", () =>
 
         expect(balanceReadsOf(reads)).toEqual([KEY.addr.toLowerCase()])
         expect(stepOf(check).balance).toBe(0n)
+        expect(stepOf(check).accountPays).toBe(false)
       })
     )
   })
