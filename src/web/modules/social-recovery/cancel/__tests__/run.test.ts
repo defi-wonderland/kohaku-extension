@@ -1058,6 +1058,7 @@ describe('the cancel the account can pay itself, and the sign screen that reads 
     expect(write.step.accountPays).toBe(false)
     expect(showsAccountNote(write.step)).toBe(false)
     expect(world.checkGas.mock.calls[1].slice(1)).toEqual(['asked', false])
+    expect(store.state().targetAttempt?.attemptId).toBe(ATTEMPT)
     expect(readsOf(nativeBalance)).toEqual([
       KEY.toLowerCase(),
       ACCOUNT.toLowerCase(),
@@ -1113,6 +1114,61 @@ describe('the cancel the account can pay itself, and the sign screen that reads 
     expect(failed.status === 'gasReadError' && failed.accountPays).toBe(false)
     expect(canRetry(failed)).toBe(true)
     expect(world.sendAccountBatch).toHaveBeenCalledTimes(1)
+    const reads = nativeBalance.mock.calls.length
+
+    await startCancel(store, world.steps, ATTEMPT)
+    const { write } = store.state()
+
+    expect(write.status).toBe('needsDeposit')
+    expect(write.status === 'needsDeposit' && write.step.accountPays).toBe(false)
+    expect(readsOf(nativeBalance).slice(reads)).toEqual([KEY.toLowerCase()])
+    expect(world.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the gone reading and no deposit step, with nothing more sent, where the attempt ends while the key-only check again waits', async () => {
+    const chain = openChain()
+    const world = runWorld(chain)
+    const recheck = deferred<GasCheck>()
+    world.checkGas.mockResolvedValueOnce(ENOUGH).mockImplementationOnce(() => recheck.promise)
+    signsShort(world)
+    const first = startCancel(store, world.steps, ATTEMPT)
+    await settled()
+    expect(store.state().write.status).toBe('failedNotSent')
+
+    executeOn(chain)
+    recheck.resolve(KEY_ALONE_SHORT)
+    await first
+
+    expect(store.state().write.status).toBe('idle')
+    expect(store.state().gone?.ended).toMatchObject({ road: 'executed', controller: NEW_KEY })
+    expect(world.sendAccountBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the read error that keeps the key alone where the attempt read of the new run fails, and the retry reads the key alone', async () => {
+    const world = runWorld()
+    const nativeBalance = checkOnBalances(world, { key: [0n], account: [RICH] })
+    const check = world.checkGas.getMockImplementation()
+    const { readAttempt } = world.steps
+    let failNextAttemptRead = false
+    world.checkGas.mockImplementation((...args: unknown[]) => {
+      failNextAttemptRead = args[1] === 'asked'
+      return check?.(...args)
+    })
+    world.steps.readAttempt = async () => {
+      if (failNextAttemptRead) {
+        failNextAttemptRead = false
+        throw providerReadFailure('call', new Error('node down'))
+      }
+      return readAttempt()
+    }
+    signsShort(world)
+    await startCancel(store, world.steps, ATTEMPT)
+    const failed = store.state().write
+
+    expect(failed.status).toBe('gasReadError')
+    expect(failed.run).toBe(2)
+    expect(failed.status === 'gasReadError' && failed.accountPays).toBe(false)
+    expect(canRetry(failed)).toBe(true)
     const reads = nativeBalance.mock.calls.length
 
     await startCancel(store, world.steps, ATTEMPT)
