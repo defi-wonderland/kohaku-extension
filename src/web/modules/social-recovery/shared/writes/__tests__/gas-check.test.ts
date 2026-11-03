@@ -349,7 +349,7 @@ describe("the gas check of a write the key sends on the account's behalf", () =>
     })
   )
 
-  describe('the check again at the amount asked, after the sign screen read the payer short', () => {
+  describe('the check at the amount asked', () => {
     it('reads both balances again and passes an account that holds the amount asked', async () => {
       const reads = readsOf(0n, ASKED)
       const check = await runGasCheck({ write: 'save', reads, passBar: 'asked' })
@@ -368,6 +368,14 @@ describe("the gas check of a write the key sends on the account's behalf", () =>
       expect(step.shortfall).toBe(ASKED)
     })
 
+    it('passes the same account where the check runs at its default bar', async () => {
+      expect((await runGasCheck({ write: 'save', reads: readsOf(0n, BETWEEN) })).kind).toBe(
+        'enough'
+      )
+    })
+  })
+
+  describe('the check again after the sign screen read the payer short', () => {
     it("reads the key alone where the account is left out of paying, and shows the key's deposit step though the account holds the amount asked", async () => {
       const reads = readsOf(0n, ASKED)
       const check = await runGasCheck({
@@ -382,12 +390,6 @@ describe("the gas check of a write the key sends on the account's behalf", () =>
       expect(step.balance).toBe(0n)
       expect(step.shortfall).toBe(ASKED)
       expect(step.accountPays).toBe(false)
-    })
-
-    it('passes the same account where the check runs at its default bar', async () => {
-      expect((await runGasCheck({ write: 'save', reads: readsOf(0n, BETWEEN) })).kind).toBe(
-        'enough'
-      )
     })
   })
 
