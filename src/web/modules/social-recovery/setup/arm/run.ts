@@ -1198,6 +1198,8 @@ export const attachSteps = async (
  * where the key holds it, the not-sent state stays as it was. A read of that
  * check that fails is never shown as the not-sent state: a new run that reads
  * the setup again shows the read error, and its retry reads the key alone.
+ * Any other failure of that check keeps the not-sent state with its retry,
+ * as before the check ran.
  */
 const recheckAfterShortSigning = async (
   store: ArmStore,

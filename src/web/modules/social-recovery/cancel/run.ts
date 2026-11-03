@@ -605,7 +605,9 @@ const watchOwnSend = (
  * shown as the not-sent state: a new run shows the read error, and its retry
  * reads the key alone. The new run reads the attempt first, since it may have
  * ended while the check ran: an attempt no longer open shows that reading and
- * nothing else, and a read of it that fails shows the read error.
+ * nothing else, and a read of it that fails shows the read error. Any other
+ * failure of the gas check again keeps the not-sent state with its retry, as
+ * before the check ran.
  */
 const recheckAfterShortSigning = async (
   store: CancelStore,
